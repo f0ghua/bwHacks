@@ -98,9 +98,14 @@ static void UpdateRepFiles()
 		printFile("time is same, do nothing\n");
 		return;
 	}
-	SYSTEMTIME stLocal;
+	SYSTEMTIME stUTC, stLocal;
+	ZeroMemory(&stUTC, sizeof(SYSTEMTIME));
 	ZeroMemory(&stLocal, sizeof(SYSTEMTIME));
-	FileTimeToSystemTime(&ftModify, &stLocal);
+	FileTimeToSystemTime(&ftModify, &stUTC);
+	TIME_ZONE_INFORMATION zinfo;
+	GetTimeZoneInformation(&zinfo);
+	SystemTimeToTzSpecificLocalTime(&zinfo, &stUTC, &stLocal);
+
 	printFile("%04d-%02d-%02d %02d:%02d:%02d\n", 
 			stLocal.wYear, stLocal.wMonth, stLocal.wDay,  stLocal.wHour, stLocal.wMinute, stLocal.wSecond);
 	char subdir[128];
