@@ -43,6 +43,7 @@ static int GetFileModifyTime(LPCSTR strFilePath, FILETIME *ftModify)
 	if (!GetFileTime(hFile, &ftCreate, &ftAccess, ftModify)) {
 		return -1;
 	}
+	CloseHandle(hFile);
 
 	return 0;
 }
@@ -125,7 +126,7 @@ DWORD CALLBACK ThreadProc(PVOID pvoid)
 {  
     MSG msg;  
     PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);   
-    SetTimer(NULL, 10, 60*1000, TimeProc);  
+    SetTimer(NULL, 10, 5*1000, TimeProc);  
     while(GetMessage(&msg, NULL, 0, 0))  
     {  
         if(msg.message == WM_TIMER)  
