@@ -16,7 +16,7 @@ BOOL g_bNeedSkipHookProc = FALSE;
 /// @brief  打印调试信息
 void DbgPrtW(wchar_t *fmt,...);
 #ifdef _DEBUG 
-#define DP(fmt, ...) DbgPrtW(fmt, __VA_ARGS__)
+#define DP(fmt, ...) DbgPrtW(fmt, ##__VA_ARGS__)
 #else
 #define DP(fmt, ...)
 #endif
