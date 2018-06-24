@@ -1,175 +1,74 @@
 #include "rephelperqt.h"
-#include "qmfcapp.h"
-#include "windows.h"
+#include "rephelperqt_p.h"
 
-/*
-RepHelperQt::RepHelperQt()
+#include <QSettings>
+#include <QFileInfo>
+#include <QDir>
+#include <QDateTime>
+#include <QDebug>
+
+RepHelperQtPrivate::RepHelperQtPrivate(RepHelperQt *q)
+    :q_ptr(q)
 {
-}
-*/
-
-//#define _T(x) x
-
-FILETIME g_ftModify = {0};
-
-// 定时器回调函数
-void CALLBACK TimeProc(HWND hwnd, UINT message, UINT idTimer, DWORD dwTime);
-// 线程回调函数
-DWORD CALLBACK ThreadProc(PVOID pvoid);
-
-static int printFile(char *fmt, ...)
-{
-#if 0
-    va_list	val;
-    FILE *file;
-    fopen_s(&file, "c:\\log_repHelper.txt", "a+");
-
-    va_start(val, fmt);
-    int n = vfprintf(file, fmt, val);
-    va_end(val);
-
-    fclose(file);
-    return n;
+    QSettings settings(
+                "HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Blizzard Entertainment\\Starcraft\\",
+                QSettings::NativeFormat);
+    m_scInstallDir = settings.value("InstallPath").toString();
+#ifndef F_NO_DEBUG
+    qDebug() << QObject::tr("path = %1").arg(m_scInstallDir);
 #endif
-    return 0;
-}
-
-
-static int GetFileModifyTime(LPCSTR strFilePath, FILETIME *ftModify)
-{
-    FILETIME ftCreate, ftAccess;
-
-    HANDLE hFile = CreateFile(strFilePath, GENERIC_READ,          // open for reading
-        FILE_SHARE_READ,       // share for reading
-        NULL,                            // default security
-        OPEN_EXISTING,          // existing file only
-        FILE_FLAG_BACKUP_SEMANTICS , // normal file
-        _T(NULL));
-
-    if (!GetFileTime(hFile, &ftCreate, &ftAccess, ftModify)) {
-        return -1;
-    }
-    CloseHandle(hFile);
-
-    return 0;
-}
-
-static int createDirectoryRecursively( LPSTR path )
-{
-    char folder[MAX_PATH];
-    char *end;
-    ZeroMemory(folder, MAX_PATH * sizeof(char));
-
-    // skip the first dir (maybe f:\\)
-    end = strchr(path, '\\');
-    if (end != NULL) end = strchr(++end, '\\');
-
-    while(end != NULL) {
-        strncpy_s(folder, path, end - path + 1);
-        //printFile("folder = %s\n", folder);
-        if(!CreateDirectory(folder, NULL)) {
-            DWORD err = GetLastError();
-
-            if(err != ERROR_ALREADY_EXISTS) {
-                // do whatever handling you'd like
-                printFile("create dir err = %d, folder = %s\n", err, folder);
-                return -1;
-            }
-        }
-        end = strchr(++end, '\\');
-    }
-
-    CreateDirectory(path, L"");
-
-    return 0;
-}
-
-static void UpdateRepFiles()
-{
-    FILETIME ftModify;
-    char repPath[128];
-    char repDir[128];
-    LPCSTR scPath = _T("f:\\game\\starcraft");
-    LPCSTR repSubDir = _T("maps\\replays\\autoReplay");
-    LPCSTR tmpFile = _T("maps\\replays\\LastReplay.rep");
-    char tmpPath[128];
-    sprintf_s(tmpPath, "%s\\%s", scPath, tmpFile);
-    printFile("%s\n", tmpPath);
-
-    if (GetFileModifyTime(tmpPath, &ftModify) == -1) {
+    if (m_scInstallDir.isEmpty())
         return;
-    }
 
-    if (CompareFileTime(&ftModify, &g_ftModify) == 0) {
-        printFile("time is same, do nothing\n");
-        return;
-    }
-    SYSTEMTIME stUTC, stLocal;
-    ZeroMemory(&stUTC, sizeof(SYSTEMTIME));
-    ZeroMemory(&stLocal, sizeof(SYSTEMTIME));
-    FileTimeToSystemTime(&ftModify, &stUTC);
-    TIME_ZONE_INFORMATION zinfo;
-    GetTimeZoneInformation(&zinfo);
-    SystemTimeToTzSpecificLocalTime(&zinfo, &stUTC, &stLocal);
-
-    printFile("%04d-%02d-%02d %02d:%02d:%02d\n",
-            stLocal.wYear, stLocal.wMonth, stLocal.wDay,  stLocal.wHour, stLocal.wMinute, stLocal.wSecond);
-    char subdir[128];
-    sprintf_s(subdir, "%02d%02d%02d", stLocal.wYear%100, stLocal.wMonth, stLocal.wDay);
-    sprintf_s(repDir, "%s\\%s\\%s", scPath, repSubDir, subdir);
-    sprintf_s(repPath, "%s\\%04d%02d%02d%02d%02d%02d.rep", repDir,
-        stLocal.wYear, stLocal.wMonth, stLocal.wDay,  stLocal.wHour, stLocal.wMinute, stLocal.wSecond);
-    printFile("%s %s\n", repDir, repPath);
-    createDirectoryRecursively(repDir);
-    if (CopyFile(tmpPath, repPath, true) == false) {
-        printFile("copy file from %s to %s fail\n", tmpPath, repPath);
-    }
-
-    g_ftModify = ftModify;
+    m_timer.setInterval(5*1000);
+    //m_timer.setSingleShot(true);
+    QObject::connect(&m_timer, &QTimer::timeout, this, &RepHelperQtPrivate::updateReplay);
+    m_timer.start();
 }
 
-void CALLBACK TimeProc(HWND hwnd, UINT message, UINT idTimer, DWORD dwTime)
+RepHelperQtPrivate::~RepHelperQtPrivate()
 {
-    UpdateRepFiles();
+
 }
 
-DWORD CALLBACK ThreadProc(PVOID pvoid)
+void RepHelperQtPrivate::updateReplay()
 {
-    MSG msg;
-    PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
-    SetTimer(NULL, 10, 5*1000, TimeProc);
-    while(GetMessage(&msg, NULL, 0, 0))
-    {
-        if(msg.message == WM_TIMER)
-        {
-            TranslateMessage(&msg);    // 翻译消息
-            DispatchMessage(&msg);     // 分发消息
+    QString repRootDir = m_scInstallDir + "\\maps\\replays\\autoReplay";
+    QString repTmpFile = m_scInstallDir + "\\maps\\replays\\LastReplay.rep";
+
+    QFileInfo fiTmpFile = QFileInfo(repTmpFile);
+    QDateTime lmd = fiTmpFile.lastModified();
+    if ( lmd != m_lastRepTime) {
+        QString repDirName = repRootDir + "\\" + QLocale(QLocale::C).toString(lmd, "yyyyMMdd");
+        QString repFileName = repDirName + "\\" +
+                QLocale(QLocale::C).toString(lmd, "yyyyMMddhhmmss") +
+                ".rep";
+#ifndef F_NO_DEBUG
+        qDebug() << QObject::tr("%1, %2").arg(repDirName).arg(repFileName);
+#endif
+
+        //QFile file(repTmpFile);
+        QDir targetDir(repDirName);
+        if(!targetDir.exists()) {
+            if(!targetDir.mkpath(targetDir.absolutePath()))
+                return;
         }
+
+        QFile::copy(repTmpFile, repFileName);
+        m_lastRepTime = lmd;
     }
-    KillTimer(NULL, 10);
-    return 0;
+
 }
 
-BOOL APIENTRY DllMain( HMODULE hModule,
-                       DWORD  ul_reason_for_call,
-                       LPVOID lpReserved
-                     )
+RepHelperQt::RepHelperQt()
+    : d_ptr(new RepHelperQtPrivate(this))
 {
-    switch (ul_reason_for_call)
-    {
-    case DLL_PROCESS_ATTACH:
-    {
-        DWORD dwThreadId;
-        // 创建线程
-        HANDLE hThread = CreateThread(NULL, 0, ThreadProc, 0, 0, &dwThreadId);
-        printFile("repHelper thread start\n");
-        break;
-    }
-    case DLL_THREAD_ATTACH:
-    case DLL_THREAD_DETACH:
-    case DLL_PROCESS_DETACH:
-        break;
-    }
-    return TRUE;
+#ifndef F_NO_DEBUG
+    qDebug() << "RepHelperQt contract ...";
+#endif
 }
 
+RepHelperQt::~RepHelperQt()
+{
+    delete d_ptr;
+}

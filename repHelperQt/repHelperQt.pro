@@ -4,8 +4,8 @@
 #
 #-------------------------------------------------
 
-DEFINES += VSDLL
-#DEFINES += QTDLL
+#DEFINES += VSDLL
+DEFINES += QTDLL
 
 DEFINES += REPHELPERQT_LIBRARY
 
@@ -19,6 +19,14 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # In order to do so, uncomment the following line.
 # You can also select to disable deprecated APIs only up to a certain version of Qt.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
+
+CONFIG(release, debug|release): {
+    DEFINES += F_NO_DEBUG
+}
+
+CONFIG(debug, debug|release): {
+
+}
 
 TEMPLATE = lib
 contains(DEFINES, VSDLL){
@@ -38,11 +46,18 @@ HEADERS += \
 QT += widgets
 TARGET = repHelperQt
 SOURCES += \
-        rephelperqt.cpp \
-        qmfcapp.cpp
+        qmfcapp.cpp \
+        dllmainqt.cpp \
+        rephelperqt.cpp
 
 HEADERS += \
+        qmfcapp.h \
         rephelperqt.h \
-        rephelperqt_global.h \
-        qmfcapp.h
+        rephelperqt_p.h \
+        rephelperqt_global.h
+
+
 }
+
+
+
